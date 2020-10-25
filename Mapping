@@ -1,0 +1,451 @@
+#IMPORTS AND INSTALLS
+#Getting access to my drive
+from google.colab import drive
+drive.mount("/content/drive")
+import sys
+sys.path.append('/content/drive/My Drive/Final project/output')
+import csv
+
+#install rtree
+!apt-get install -y libspatialindex-dev
+!pip install rtree
+import rtree
+
+#import pandas
+import pandas as pd
+
+#install and import fiona
+!pip install fiona
+import fiona
+
+#install and import geopandas
+!pip install geopandas
+import geopandas as gpd
+from geopandas import GeoSeries
+
+
+#install and import shapely
+!pip install shapely
+import shapely as shp
+
+#install and import mapclassify
+!pip install mapclassify
+import mapclassify
+
+#import matplotlib.pyplot
+import matplotlib.pyplot as plt
+
+#import point and ploygon function to create geometry with 
+from shapely.geometry import Point
+from shapely.geometry import Polygon
+
+#import numpy
+import numpy as np
+
+#Import bokeh
+from bokeh.plotting import figure, save, show
+from bokeh.io import output_notebook, show
+output_notebook()
+from bokeh.models import ColumnDataSource
+from bokeh.models import HoverTool
+from bokeh.models import GeoJSONDataSource
+
+from bokeh.palettes import brewer
+
+!pip install mplleaflet
+import mplleaflet
+
+!pip install folium
+import folium
+from folium import plugins
+from folium.plugins import HeatMap
+from folium.plugins import HeatMapWithTime
+
+Importing previously created shapefiles
+
+water = gpd.read_file('/content/drive/My Drive/Final project/output/waterways')
+sandy = gpd.read_file('/content/drive/My Drive/Final project/output/sandy/sandy.shp')
+flood2020 = gpd.read_file('/content/drive/My Drive/Final project/output/floodplain2020/floodplain2020.shp')
+flood2050 = gpd.read_file('/content/drive/My Drive/Final project/output/floodplain2050/floodplain2050.shp')
+subwayEntrances = gpd.read_file ('/content/drive/My Drive/Final project/output/subwayEntrances')
+nta=gpd.read_file ('/content/drive/My Drive/Final project/output/nta/nta.shp')
+lines=gpd.read_file ('/content/drive/My Drive/Final project/output/lines/lines.shp')
+
+Getting numbers
+
+subwayEntrances.head()
+
+#Spatial join: adding on the subwayEntrances gdf the NTA in which the entrance is located in
+subwayEntrances=gpd.sjoin(subwayEntrances,nta[['ntaname', 'geometry']], how='left', op='within')
+
+subwayEntrances.head()
+
+#How many subways have an underground (subway) structure?
+subway = subwayEntrances.groupby('Structure').size()
+subway
+
+How many subway entrances were in a flooding zone?
+
+entrancefloodSandy=subwayEntrances.groupby('sandyflood').size()
+entrancefloodSandy
+
+entranceflood2020=subwayEntrances.groupby('2020floode').size()
+entranceflood2020
+
+entranceflood2050=subwayEntrances.groupby('2050floode').size()
+entranceflood2050
+
+How many subway entrances with an underground structure are in a flooding zone?
+
+sandyYes = subwayEntrances[subwayEntrances['Structure']=='Subway'].groupby('sandyflood').size()
+sandyYes
+
+Yes2020 = subwayEntrances[subwayEntrances['Structure']=='Subway'].groupby('2020floode').size()
+Yes2020
+
+Yes2050 = subwayEntrances[subwayEntrances['Structure']=='Subway'].groupby('2050floode').size()
+Yes2050
+
+How many subway entrances are in the flooding zone per NTA?
+
+nta_sandy= subwayEntrances[subwayEntrances['sandyflood']=='Yes'].groupby('ntaname').size()
+nta_sandy
+
+nta_2020flood = subwayEntrances[subwayEntrances['2020floode']=='Yes'].groupby('ntaname').size()
+nta_2020flood
+
+nta_2050flood = subwayEntrances[subwayEntrances['2050floode']=='Yes'].groupby('ntaname').size()
+nta_2050flood
+
+Subway colors
+
+#Get a list of unique names of Subway Lines
+linelist = lines.name.unique()
+print(linelist)
+
+#Take the list from above and imput associated HTML colour code courtesy of MTA website
+lines_colors = {'G':'#6CBE45', 'Q':'#FCCC0A', 'M':'#FF6319', 'S':'#808183', 'A':'#0039A6', 'B-D':'#FF6319',
+                'B-D-F-M':'#FF6319', 'R':'#FCCC0A', 'N-Q-R':'#FCCC0A', 'N-Q':'#FCCC0A', 'N-R':'#FCCC0A',
+                'F':'#FF6319', 'F-M':'#FF6319', 'E':'#0039A6', '7':'#B933AD', 'J-Z':'#996633', 'L':'#A7A9AC', 
+                'A-C':'#0039A6', 'D':'#FF6319', '1-2-3':'#EE352E', 'B':'#FF6319', '4-5-6':'#00933C', 'N':'#FCCC0A',
+                '1':'#EE352E', 'N-W':'#FCCC0A', '2-3':'#EE352E', '2':'#EE352E', '4-5':'#00933C','5':'#00933C',
+                '4':'#00933C', '3':'#EE352E', 'A-C-E':'#0039A6', 'N-Q-R-W':'#FCCC0A', 'N-R-W':'#FCCC0A',
+                '6':'#00933C', 'R-W':'#FCCC0A'}
+
+#Map the Subway lines with respective colours using a for loop
+#Create subplot
+fig, ax = plt.subplots(figsize=(8, 8))
+
+# For loop running through list of colors and line names simulatneously
+for i, line in lines.groupby('name'):
+    
+    # Define the color for each group using the dictionary
+    color = lines_colors[i]
+    
+    # Plot each group using the color defined above
+    line.plot(color=color,
+              ax=ax)
+
+NTA Mapping
+
+#Merging the list of the NTAs with the number of entrances (in flood zone) WITH the nta gdf
+#creating a new column 'sandyflood'
+nta=nta.merge(nta_sandy.reset_index(name='sandyflood'), how='left')
+nta.head()
+
+ntasandy = nta.plot(column="sandyflood",
+         legend=True, 
+         scheme='NaturalBreaks', 
+         figsize=(15, 10), 
+         cmap= "Blues", edgecolor="lightgrey",
+         missing_kwds={ "color": "white",
+                       "hatch": "/ /", 
+                       "label": "Missing values",}, );
+
+title_1 = "NYC NTAs by number of Subway Entrances in Hurricane Sandy's floodplain"
+ntasandy.set_title(title_1, fontdict={'fontsize':'16'})
+
+for i, line in lines.groupby('name'):
+    
+    # Define the color for each group using the dictionary
+    color = lines_colors[i]
+    
+    # Plot each group using the color defined above
+    line.plot(color=color,
+              ax=ntasandy,
+              label=i, alpha=0.3)
+
+
+#Merging the list of the NTAs with the number of entrances (in flood zone) WITH the nta gdf
+#creating a new column '2020flood'
+nta=nta.merge(nta_2020flood.reset_index(name='2020flood'),how='left')
+nta.head()
+
+nta2020 = nta.plot(column="2020flood",
+         legend=True, 
+         scheme='NaturalBreaks', 
+         figsize=(15, 10), 
+         cmap= "Blues", edgecolor="lightgrey",
+         missing_kwds={ "color": "white",
+                       "hatch": "/ /", 
+                       "label": "Missing values",}, );
+
+
+title_2 = "NYC NTAs by number of Subway Entrances in the 100-year floodplain for 2020s"
+nta2020.set_title(title_2, fontdict={'fontsize':'15'})
+
+for i, line in lines.groupby('name'):
+    
+    # Define the color for each group using the dictionary
+    color = lines_colors[i]
+    
+    # Plot each group using the color defined above
+    line.plot(color=color,
+              ax=nta2020,
+              label=i, alpha=0.3)
+
+
+#Merging the list of the NTAs with the number of entrances (in flood zone) WITH the nta gdf
+#creating a new column '2050flood'
+nta=nta.merge(nta_2050flood.reset_index(name='2050flood'),how='left')
+nta.head()
+
+nta2050 = nta.plot(column="2050flood",
+         legend=True, 
+         scheme='NaturalBreaks', 
+         figsize=(15, 10), 
+         cmap= "Blues", edgecolor="lightgrey",
+         missing_kwds={ "color": "white",
+                       "hatch": "/ /", 
+                       "label": "Missing values",}, );
+
+title_3 = "NYC NTAs by number of Subway Entrances in the 100-year floodplain for 2050s"
+nta2050.set_title(title_3, fontdict={'fontsize':'15'})
+
+for i, line in lines.groupby('name'):
+    
+    # Define the color for each group using the dictionary
+    color = lines_colors[i]
+    
+    # Plot each group using the color defined above
+    line.plot(color=color,
+              ax=nta2050,
+              label=i, alpha=0.3)
+
+Mapping Flood Zones using Function
+
+#Flood Map Plot Function
+#Function contains 6 arguments, 5 geodataframes, 1 string for title
+
+def floodmap(landbase, transportation_node, transportation_link, flood, water, title):
+    base = landbase.plot(figsize = (16,16),facecolor = '#F2EAD5', edgecolor='lightgrey', zorder = 0)
+
+    transportation_node.plot(ax=base, color = 'white', marker = '.', markersize = 5, edgecolor="black", zorder = 5)
+ 
+
+    for i, line in transportation_link.groupby('name'):
+    
+        # Define the color for each group using the dictionary
+        color = lines_colors[i]
+    
+        # Plot each group using the color defined above
+        line.plot(color=color,
+               ax=base,
+               zorder = 1)
+               
+
+    flood.plot(ax=base, facecolor='aquamarine', alpha = 0.5, zorder = 6, edgecolor='mediumaquamarine', legend = True)
+
+    water.plot(ax=base,  facecolor='#A1C9EC', zorder = 7)
+
+    base.set_title(label = title, 
+                      fontdict={'fontsize':'17'})
+
+    base.set_facecolor(color='floralwhite')
+
+# Plot of Hurricane Sandy Inundation Zone using floodmap function
+floodmap(nta,subwayEntrances,lines,sandy,water,"Hurricane Sandy Inundation Zone and New York City Subway Entrances")
+
+#Plot 2020 floodpain map
+floodmap(nta, subwayEntrances, lines, flood2020, water, "NPCC 2020s 100-year Floodplain and New York City Subway Entrances")
+
+#Plot 2050 floodpain map
+floodmap(nta, subwayEntrances, lines, flood2050, water, "NPCC 2050s 100-year Floodplain and New York City Subway Entrances")
+
+# **Interactive Maps**
+
+# Bokeh Map
+
+Convert Layers to GEOJson
+
+patches_nta = GeoJSONDataSource(geojson=nta.to_json())
+patches_sandy = GeoJSONDataSource(geojson = sandy.to_json())
+patches_2020 = GeoJSONDataSource(geojson = flood2020.to_json())
+patches_2050 = GeoJSONDataSource(geojson = flood2050.to_json())
+patches_entrance = GeoJSONDataSource(geojson = subwayEntrances.to_json())
+patches_lines = GeoJSONDataSource(geojson = lines.to_json())
+patches_water = GeoJSONDataSource(geojson = water.to_json())
+
+#Hover tools
+entrancetool = [('Entrance Name','@S_name station at the @Corner corner @NS / @EW'),
+                ('Structure', '@Structure'),
+                ('Inundated by Sandy','@sandyflood'),
+                ('2020s Floodplain','@2020floode'),
+                ('2050s Floodplain','@2050floode')]
+
+
+bokeh_interactive = figure(title = "New York City Subway Station Entrances and Climate Change",
+                           tooltips = entrancetool, background_fill_color = 'floralwhite')
+
+bokeh_interactive.patches('xs','ys', source = patches_water, color = '#A1C9EC')
+
+bokeh_interactive.patches('xs','ys', source = patches_nta, color =  '#F2EAD5', line_width=1, line_color = 'lightgrey')
+
+bokeh_interactive.multi_line('xs','ys', source = patches_lines, color = 'navy')
+
+bokeh_interactive.circle('x', 'y', source = patches_entrance, fill_color = 'crimson', size = 5, line_color = 'crimson')
+
+show(bokeh_interactive)
+
+#Leaflet Maps
+
+#Create function to make duplicate dataframe with CRS = EPSG: 4325
+def leaflet_projection(data):
+    data.to_crs(epsg=4326, inplace=True)
+
+#Create duplicated of all geodataframes but revert them to WGS 84 (EPSG:4326) 
+#Use leaflet_projection function
+#This way they are compatable with mlpleaflet
+leaflet_projection(nta)
+leaflet_projection(subwayEntrances)
+leaflet_projection(sandy)
+leaflet_projection(flood2020)
+leaflet_projection(flood2050)
+leaflet_projection(lines)
+leaflet_projection(water)
+
+#Create matplotlib subplot 
+
+def leafletmap_single(transportation_node, transportation_link, flood):
+    fig, base = plt.subplots(1,1,figsize = (10,10))
+
+    transportation_node.plot(ax = base, color = 'black', markersize = 10)
+
+    for i, line in transportation_link.groupby('name'):
+    
+        # Define the color for each group using the dictionary
+        color = lines_colors[i]
+    
+        # Plot each group using the color defined above
+        line.plot(color=color,
+              ax=base,
+              zorder = 1)
+    flood.plot(ax=base, facecolor='aquamarine', alpha = 0.5, zorder = 6, edgecolor='mediumaquamarine')
+
+    mplleaflet.show(fig=base.figure, path= '/content/drive/My Drive/Final project/output/single.html/')
+
+# Leaflet of Sandy Inundation Zone
+leafletmap_single(subwayEntrances, lines, sandy)
+
+# Leaflet of 2020 Floodplain Inundation Zone
+leafletmap_single(subwayEntrances, lines, flood2020)
+
+# Leaflet of 2050 Floodplain Inundation Zone
+leafletmap_single(subwayEntrances, lines, flood2050)
+
+def leafletmap_combo(transportation_node, transportation_link, flood1, flood2, flood3):
+    fig, base4 = plt.subplots(1,1,figsize = (10,10))
+
+    transportation_node.plot(ax = base4, column = '2050floode', cmap = 'RdYlGn_r', markersize = 10, zorder = 10)
+
+    for i, line in transportation_link.groupby('name'):
+    
+        # Define the color for each group using the dictionary
+        color = lines_colors[i]
+    
+        # Plot each group using the color defined above
+        line.plot(color=color,
+                  ax=base4,
+                  zorder = 1,
+                  linewidth = 5.3)
+               
+    flood1.plot(ax=base4, facecolor='mediumblue', alpha = 0.9, zorder = 8)
+    flood2.plot(ax=base4, facecolor='mediumblue', alpha = 0.9, zorder = 7)
+    flood3.plot(ax=base4, facecolor='mediumblue', alpha = 0.9, zorder = 6)
+
+    mplleaflet.show(fig=base4.figure, path= '/content/drive/My Drive/Final project/output/combo.html/')
+
+
+leafletmap_combo(subwayEntrances, lines, sandy, flood2020, flood2050)
+
+##Folium Maps
+
+#Folium Heatmap for Entrances in Sandy Inundation Zone
+sandy_heat = folium.Map(location=[40.730610, -73.935242], tiles='cartodbdark_matter',
+                zoom_start=11, control_scale=True, prefer_canvas=True)
+#For loop to add entrance points as Circle markers
+for index, row in subwayEntrances.iterrows():
+    folium.CircleMarker([row['E_Lat'], row['E_Long']],
+                        radius=2.5,
+                        popup=row['S_name'],
+                        color= 'black',
+                        fill_color= 'white',
+                        fill_opacity=1,
+                       ).add_to(sandy_heat)
+    #Create new dataframe with only Entrance inside flood zone
+ent_sandy = subwayEntrances[subwayEntrances['sandyflood']=='Yes']
+    
+    #Create numpy array of new dataframe coordinates
+c = numpy.asarray(ent_sandy[['E_Lat', 'E_Long']])
+
+    #Add heatmap to map
+HeatMap(c).add_to(sandy_heat)
+
+sandy_heat
+
+#2020 floodplain heatmap
+flood20_heat = folium.Map(location=[40.730610, -73.935242], tiles='cartodbdark_matter',
+                zoom_start=11, control_scale=True, prefer_canvas=True)
+#For loop to add entrance points as Circle markers
+for index, row in subwayEntrances.iterrows():
+    folium.CircleMarker([row['E_Lat'], row['E_Long']],
+                        radius=2.5,
+                        popup=row['S_name'],
+                        color= 'black',
+                        fill_color= 'white',
+                        fill_opacity=1,
+                       ).add_to(flood20_heat)
+    #Create new dataframe with only Entrance inside flood zone
+ent_20 = subwayEntrances[subwayEntrances['2020floode']=='Yes']
+    
+    #Create numpy array of new dataframe coordinates
+e = numpy.asarray(ent_20[['E_Lat', 'E_Long']])
+
+    #Add heatmap to map
+HeatMap(e).add_to(flood20_heat)
+
+flood20_heat
+
+#2050 floodplain heatmap
+flood50_heat = folium.Map(location=[40.730610, -73.935242], tiles='cartodbdark_matter',
+                zoom_start=11, control_scale=True, prefer_canvas=True)
+#For loop to add entrance points as Circle markers
+for index, row in subwayEntrances.iterrows():
+    folium.CircleMarker([row['E_Lat'], row['E_Long']],
+                        radius=2.5,
+                        popup=row['S_name'],
+                        color= 'black',
+                        fill_color= 'white',
+                        fill_opacity=1,
+                       ).add_to(flood50_heat)
+    #Create new dataframe with only Entrance inside flood zone
+ent_50 = subwayEntrances[subwayEntrances['2050floode']=='Yes']
+    
+    #Create numpy array of new dataframe coordinates
+g = numpy.asarray(ent_50[['E_Lat', 'E_Long']])
+
+    #Add heatmap to map
+HeatMap(g).add_to(flood50_heat)
+
+flood50_heat
+
