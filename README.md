@@ -14,5 +14,7 @@ and past & projected floodplain data for the city of New York. Libraries used in
 - mplleaflet
 - folium
 
+The python scripts also provide functions to automate the creation of consistently styled maps using user-input data.
+
 Please consult the report for more information on the methods used and results.
 This project is for educational purposes only and should not be used in adaptaion planning policies.
